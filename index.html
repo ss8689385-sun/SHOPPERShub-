@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SHOPPERS HUB - Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; background:#f4f6f9; }
+    .login-container {
+      display:flex; justify-content:center; align-items:center;
+      height:100vh;
+    }
+    .login-box {
+      background:white; padding:30px; width:320px;
+      border-radius:10px; box-shadow:0 5px 20px rgba(0,0,0,0.1);
+    }
+    input {
+      width:100%; padding:10px; margin:10px 0;
+      border-radius:6px; border:1px solid #ccc;
+    }
+    button {
+      width:100%; padding:10px; background:#007bff;
+      color:white; border:none; border-radius:6px;
+      cursor:pointer;
+    }
+    button:hover { background:#0056b3; }
+    .dashboard { display:none; }
+    .sidebar {
+      width:220px; background:#1f2937; color:white;
+      height:100vh; position:fixed;
+    }
+    .sidebar h2 { text-align:center; padding:20px 0; }
+    .sidebar button {
+      width:100%; background:none; border:none;
+      color:white; padding:15px; text-align:left;
+      cursor:pointer;
+    }
+    .sidebar button:hover { background:#374151; }
+    .content {
+      margin-left:220px; padding:20px;
+    }
+    .card {
+      background:white; padding:20px;
+      border-radius:10px; margin-bottom:20px;
+      box-shadow:0 4px 10px rgba(0,0,0,0.05);
+    }
+    table {
+      width:100%; border-collapse:collapse;
+    }
+    th, td {
+      padding:10px; border-bottom:1px solid #ddd;
+    }
+    .approve { background:green; color:white; padding:5px 10px; border:none; border-radius:5px; }
+    .reject { background:red; color:white; padding:5px 10px; border:none; border-radius:5px; }
+    @media(max-width:768px){
+      .sidebar { width:100%; height:auto; position:relative; }
+      .content { margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-container" id="loginPage">
+  <div class="login-box">
+    <h2>Admin Login</h2>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <p id="error" style="color:red;"></p>
+  </div>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="sidebar">
+    <h2>SHOPPERS HUB</h2>
+    <button onclick="showSection('stats')">Dashboard</button>
+    <button onclick="showSection('restaurants')">Restaurants</button>
+    <button onclick="showSection('delivery')">Delivery Boys</button>
+    <button onclick="showSection('customers')">Customers</button>
+    <button onclick="showSection('orders')">Orders</button>
+    <button onclick="showSection('reports')">Reports</button>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <div class="content">
+    <div id="stats" class="card section">
+      <h3>Dashboard Stats</h3>
+      <p>Total Customers: <span id="totalCustomers">0</span></p>
+      <p>Total Restaurants: <span id="totalRestaurants">0</span></p>
+      <p>Total Delivery Boys: <span id="totalDelivery">0</span></p>
+      <p>Total Orders: <span id="totalOrders">0</span></p>
+      <p>COD Revenue: ₹<span id="codRevenue">0</span></p>
+    </div>
+
+    <div id="restaurants" class="card section" style="display:none;">
+      <h3>Restaurant Approvals</h3>
+      <table id="restaurantTable"></table>
+    </div>
+
+    <div id="delivery" class="card section" style="display:none;">
+      <h3>Delivery Partner Approvals</h3>
+      <table id="deliveryTable"></table>
+    </div>
+
+    <div id="customers" class="card section" style="display:none;">
+      <h3>Customers</h3>
+      <table id="customerTable"></table>
+    </div>
+
+    <div id="orders" class="card section" style="display:none;">
+      <h3>Orders</h3>
+      <table id="ordersTable"></table>
+    </div>
+
+    <div id="reports" class="card section" style="display:none;">
+      <h3>Reports</h3>
+      <p>Top Restaurants & COD Totals auto-calculated.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+  apiKey: "AIzaSyALd_772ajq6DFJsAh1xeXQ8vSe5Ne1f5I",
+  authDomain: "shoppers-b.firebaseapp.com",
+  databaseURL: "https://shoppers-b-default-rtdb.firebaseio.com",
+  projectId: "shoppers-b",
+  storageBucket: "shoppers-b.firebasestorage.app",
+  messagingSenderId: "595581531180",
+  appId: "1:595581531180:web:49cebff680669c3c39cd89"
+};
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+
+  function login(){
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    auth.signInWithEmailAndPassword(email, password)
+      .then(()=>{
+        document.getElementById("loginPage").style.display="none";
+        document.getElementById("dashboard").style.display="block";
+        loadDashboard();
+      })
+      .catch(error=>{
+        document.getElementById("error").innerText = error.message;
+      });
+  }
+
+  function logout(){
+    auth.signOut().then(()=>{
+      location.reload();
+    });
+  }
+
+  function showSection(id){
+    document.querySelectorAll(".section").forEach(sec=>sec.style.display="none");
+    document.getElementById(id).style.display="block";
+  }
+
+  function loadDashboard(){
+    db.ref("customers").on("value", snap=>{
+      document.getElementById("totalCustomers").innerText = snap.numChildren();
+    });
+
+    db.ref("restaurants").on("value", snap=>{
+      document.getElementById("totalRestaurants").innerText = snap.numChildren();
+      loadRestaurants(snap.val());
+    });
+
+    db.ref("deliveryPartners").on("value", snap=>{
+      document.getElementById("totalDelivery").innerText = snap.numChildren();
+      loadDelivery(snap.val());
+    });
+
+    db.ref("orders").on("value", snap=>{
+      let total=0, revenue=0;
+      snap.forEach(child=>{
+        total++;
+        if(child.val().status==="DELIVERED"){
+          revenue += parseFloat(child.val().totalAmount || 0);
+        }
+      });
+      document.getElementById("totalOrders").innerText = total;
+      document.getElementById("codRevenue").innerText = revenue;
+      loadOrders(snap.val());
+    });
+
+    db.ref("customers").on("value", snap=>{
+      loadCustomers(snap.val());
+    });
+  }
+
+  function loadRestaurants(data){
+    const table = document.getElementById("restaurantTable");
+    table.innerHTML="<tr><th>Name</th><th>Approved</th><th>Action</th></tr>";
+    for(let id in data){
+      let r=data[id];
+      table.innerHTML+=`
+        <tr>
+          <td>${r.name||""}</td>
+          <td>${r.approved}</td>
+          <td>
+            <button class="approve" onclick="approveRestaurant('${id}')">Approve</button>
+            <button class="reject" onclick="rejectRestaurant('${id}')">Reject</button>
+          </td>
+        </tr>`;
+    }
+  }
+
+  function approveRestaurant(id){
+    db.ref("restaurants/"+id).update({approved:true});
+  }
+  function rejectRestaurant(id){
+    db.ref("restaurants/"+id).remove();
+  }
+
+  function loadDelivery(data){
+    const table=document.getElementById("deliveryTable");
+    table.innerHTML="<tr><th>Name</th><th>Approved</th><th>Action</th></tr>";
+    for(let id in data){
+      let d=data[id];
+      table.innerHTML+=`
+      <tr>
+        <td>${d.name||""}</td>
+        <td>${d.approved}</td>
+        <td>
+          <button class="approve" onclick="approveDelivery('${id}')">Approve</button>
+          <button class="reject" onclick="rejectDelivery('${id}')">Reject</button>
+        </td>
+      </tr>`;
+    }
+  }
+
+  function approveDelivery(id){
+    db.ref("deliveryPartners/"+id).update({approved:true});
+  }
+  function rejectDelivery(id){
+    db.ref("deliveryPartners/"+id).remove();
+  }
+
+  function loadCustomers(data){
+    const table=document.getElementById("customerTable");
+    table.innerHTML="<tr><th>Name</th><th>Email</th><th>Phone</th></tr>";
+    for(let id in data){
+      let c=data[id];
+      table.innerHTML+=`
+      <tr>
+        <td>${c.name||""}</td>
+        <td>${c.email||""}</td>
+        <td>${c.phone||""}</td>
+      </tr>`;
+    }
+  }
+
+  function loadOrders(data){
+    const table=document.getElementById("ordersTable");
+    table.innerHTML="<tr><th>Status</th><th>Total</th><th>Action</th></tr>";
+    for(let id in data){
+      let o=data[id];
+      table.innerHTML+=`
+      <tr>
+        <td>${o.status}</td>
+        <td>₹${o.totalAmount}</td>
+        <td>
+          <button class="reject" onclick="cancelOrder('${id}')">Cancel</button>
+        </td>
+      </tr>`;
+    }
+  }
+
+  function cancelOrder(id){
+    db.ref("orders/"+id).update({status:"CANCELLED"});
+  }
+
+</script>
+</body>
+</html>
+https://yourproject.web.app
